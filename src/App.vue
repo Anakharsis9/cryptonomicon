@@ -181,5 +181,3 @@ export default {
   },
 };
 </script>
-
-<style src="./assets/tailwind.css"></style>
