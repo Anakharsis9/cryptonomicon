@@ -86,10 +86,27 @@
       </section>
 
       <template v-if="tickers.length">
+        <div>
+          <button
+            v-if="page > 1"
+            @click="page -= 1"
+            class="my-4 mx-2 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+          >
+            Назад
+          </button>
+          <button
+            v-if="hasNextPage"
+            @click="page += 1"
+            class="my-4 mx-2 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+          >
+            Вперед
+          </button>
+          <div>Фильтр: <input v-model="filter" /></div>
+        </div>
         <hr class="w-full border-t border-gray-600 my-4" />
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <div
-            v-for="tick in tickers"
+            v-for="tick in filteredTickers()"
             :key="tick.name"
             @click="select(tick)"
             :class="{ 'border-4': selectedTicker === tick }"
@@ -179,6 +196,9 @@ export default {
     selectedTicker: null,
     graph: [],
     coinsList: {},
+    page: 1,
+    filter: "",
+    hasNextPage: true,
   }),
   computed: {
     isTickerAdded() {
@@ -197,6 +217,15 @@ export default {
     },
   },
   created() {
+    const windowData = Object.fromEntries(
+      new URL(window.location).searchParams.entries()
+    );
+    if (windowData.filter) {
+      this.filter = windowData.filter;
+    }
+    if (windowData.page) {
+      this.page = windowData.page;
+    }
     const tickersData = localStorage.getItem("tickers");
     if (tickersData) {
       this.tickers = JSON.parse(tickersData);
@@ -207,6 +236,15 @@ export default {
     this.getCoinsList();
   },
   methods: {
+    filteredTickers() {
+      const start = (this.page - 1) * 6;
+      const end = this.page * 6;
+      const filteredTickers = this.tickers.filter((ticker) =>
+        ticker.name.includes(this.filter.toUpperCase())
+      );
+      this.hasNextPage = filteredTickers.length > end;
+      return filteredTickers.slice(start, end);
+    },
     addTicker() {
       const currentTicker = {
         name: this.tickerUpperCase,
@@ -223,14 +261,16 @@ export default {
       setInterval(async () => {
         const API_URL = `https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD&api_key=1b0437818e0cb14a189da8a65b5647e6e7d3475766dd3cc04be40e28874d3459`;
 
-        const response = await fetch(API_URL);
-        const result = await response.json();
-
-        this.findTicker(tickerName).price =
-          result.USD > 1 ? result.USD.toFixed(2) : result.USD.toPrecision(2);
-
-        if (this.selectedTicker?.name === tickerName)
-          this.graph.push(result.USD);
+        try {
+          const response = await fetch(API_URL);
+          const result = await response.json();
+          this.findTicker(tickerName).price =
+            result.USD > 1 ? result.USD.toFixed(2) : result.USD.toPrecision(2);
+          if (this.selectedTicker?.name === tickerName)
+            this.graph.push(result.USD);
+        } catch (error) {
+          return;
+        }
       }, 3000);
     },
 
@@ -263,6 +303,24 @@ export default {
     addTickerByHint(hint) {
       this.ticker = hint.Symbol;
       this.addTicker();
+    },
+  },
+  watch: {
+    filter() {
+      this.page = 1;
+
+      window.history.pushState(
+        null,
+        document.title,
+        `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
+      );
+    },
+    page() {
+      window.history.pushState(
+        null,
+        document.title,
+        `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
+      );
     },
   },
 };
