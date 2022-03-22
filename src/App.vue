@@ -87,6 +87,7 @@
 
       <template v-if="tickers.length">
         <div>
+          <span>{{ page }}</span>
           <button
             v-if="page > 1"
             @click="page -= 1"
@@ -106,7 +107,7 @@
         <hr class="w-full border-t border-gray-600 my-4" />
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <div
-            v-for="tick in filteredTickers()"
+            v-for="tick in paginatedTickers"
             :key="tick.name"
             @click="select(tick)"
             :class="{ 'border-4': selectedTicker === tick }"
@@ -149,7 +150,7 @@
         </h3>
         <div class="flex items-end border-gray-600 border-b border-l h-64">
           <div
-            v-for="(bar, idx) in normalizeGraph()"
+            v-for="(bar, idx) in normalizedGraph"
             :key="idx"
             :style="{ height: `${bar}%` }"
             class="bg-purple-800 border w-10"
@@ -192,13 +193,16 @@ export default {
   name: "App",
   data: () => ({
     ticker: "",
+    filter: "",
+
     tickers: [],
     selectedTicker: null,
+
     graph: [],
+
     coinsList: {},
+
     page: 1,
-    filter: "",
-    hasNextPage: true,
   }),
   computed: {
     isTickerAdded() {
@@ -208,12 +212,43 @@ export default {
       return this.ticker.toUpperCase();
     },
     tickerHints() {
-      let ticker = this.tickerUpperCase ? this.tickerUpperCase : "nothing";
-      const temp = Object.values(this.coinsList).filter(
+      const ticker = this.tickerUpperCase ? this.tickerUpperCase : "nothing";
+      const relevantCoins = Object.values(this.coinsList).filter(
         (coin) => coin.FullName.includes(ticker) || coin.Symbol.includes(ticker)
       );
 
-      return temp.slice(0, 4);
+      return relevantCoins.slice(0, 4);
+    },
+    startIndex() {
+      return (this.page - 1) * 6;
+    },
+    endIndex() {
+      return this.page * 6;
+    },
+    filteredTickers() {
+      return this.tickers.filter((ticker) =>
+        ticker.name.includes(this.filter.toUpperCase())
+      );
+    },
+    paginatedTickers() {
+      return this.filteredTickers.slice(this.startIndex, this.endIndex);
+    },
+    hasNextPage() {
+      return this.filteredTickers.length > this.endIndex;
+    },
+    normalizedGraph() {
+      const maxValue = Math.max(...this.graph);
+      const minValue = Math.min(...this.graph);
+      if (maxValue === minValue) return this.graph.map(() => 50);
+      return this.graph.map(
+        (barValue) => 5 + ((barValue - minValue) * 95) / (maxValue - minValue)
+      );
+    },
+    pageStateOptions() {
+      return {
+        filter: this.filter,
+        page: this.page,
+      };
     },
   },
   created() {
@@ -236,23 +271,14 @@ export default {
     this.getCoinsList();
   },
   methods: {
-    filteredTickers() {
-      const start = (this.page - 1) * 6;
-      const end = this.page * 6;
-      const filteredTickers = this.tickers.filter((ticker) =>
-        ticker.name.includes(this.filter.toUpperCase())
-      );
-      this.hasNextPage = filteredTickers.length > end;
-      return filteredTickers.slice(start, end);
-    },
     addTicker() {
       const currentTicker = {
         name: this.tickerUpperCase,
         price: "-",
       };
       if (this.isTickerAdded) return;
-      this.tickers.push(currentTicker);
-      localStorage.setItem("tickers", JSON.stringify(this.tickers));
+      this.tickers = [...this.tickers, currentTicker];
+
       this.subscribeToUpdates(currentTicker.name);
       this.ticker = "";
     },
@@ -276,23 +302,17 @@ export default {
 
     select(ticker) {
       this.selectedTicker = ticker;
-      this.graph = [];
     },
 
     handleDelete(ticker) {
       this.tickers = this.tickers.filter((tick) => tick.name !== ticker.name);
+      if (this.selectedTicker === ticker) this.selectedTicker = null;
     },
 
     findTicker(tickerName) {
       return this.tickers.find((ticker) => ticker.name === tickerName);
     },
-    normalizeGraph() {
-      const maxValue = Math.max(...this.graph);
-      const minValue = Math.min(...this.graph);
-      return this.graph.map(
-        (barValue) => 5 + ((barValue - minValue) * 95) / (maxValue - minValue)
-      );
-    },
+
     async getCoinsList() {
       const API_URL =
         "https://min-api.cryptocompare.com/data/all/coinlist?summary=true";
@@ -306,20 +326,24 @@ export default {
     },
   },
   watch: {
+    selectedTicker() {
+      this.graph = [];
+    },
+    tickers() {
+      localStorage.setItem("tickers", JSON.stringify(this.tickers));
+    },
+    paginatedTickers() {
+      if ((this.paginatedTickers.length === 0) & (this.page > 1))
+        this.page -= 1;
+    },
     filter() {
       this.page = 1;
-
-      window.history.pushState(
-        null,
-        document.title,
-        `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
-      );
     },
-    page() {
+    pageStateOptions(newValue) {
       window.history.pushState(
         null,
         document.title,
-        `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
+        `${window.location.pathname}?filter=${newValue.filter}&page=${newValue.page}`
       );
     },
   },
